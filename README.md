@@ -8,7 +8,7 @@ This repository is based on the ns-3 codebase internally maintained by NASA-NJU,
 
 We have modularized our modifications to ensure compatibility with the original ns3. Our main modules are the `src/dcb` (Data center bridging) module and the `src/json-util` module. 
 
-- The `src/dcb` module implements the RDMAv2 protocol stack.
+- The `src/dcb` module implements the RoCEv2 protocol stack.
 - The `src/json-util` module includes utility code for easily experimental configuration and result output via JSON.
 
 Furthermore, we have made minor modifications to the original ns3 code, primarily to optimize routing functionality and to change the forwarding table from linear search to hash lookup (based on our experience, this can reduce experiment time by over 40% in topologies with 320 switches).
@@ -37,7 +37,7 @@ Note that finishing all the experiments need 4 hours on our server with Intel 48
 
 ### Plot figures
 
-All the figure codes used in our experiments are placed in `config/prioplus-eurosys25/figure-code`. You can reproduce the figure with them. We have atteched the reproduced figures in the ipython notebook for your convenience.
+All the figure codes used in our experiments are placed in `config/prioplus-eurosys25/figure-code`. You can reproduce the figure with them. We have attached the reproduced figures in the ipython notebook for your convenience.
 
 ## Future Evolution of this Repository
 
@@ -67,7 +67,7 @@ Other contributors:
 
 ## License
 
-This software is licensed under the terms of the GNU General Public License v2.0 only (GPL-2.0-only). See the LICENSE file for more details.
+This software is licensed under the terms of the GNU General Public License v2.0 only (GPL-2.0-only). See the [LICENSE](./LICENSE) file for more details.
 
 ## Citation
 

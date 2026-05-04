@@ -55,6 +55,7 @@
 #include "ns3/uinteger.h"
 
 #include <cmath>
+#include <unordered_set>
 
 namespace ns3
 {
@@ -308,7 +309,9 @@ DcbTrafficGenApplication::GetTypeId()
                                           DcbTrafficGenApplication::TrafficPattern::COFLOW_CDF,
                                           "CoflowCDF",
                                           DcbTrafficGenApplication::TrafficPattern::CHECKPOINT,
-                                          "Checkpoint"))
+                                          "Checkpoint",
+                                          DcbTrafficGenApplication::TrafficPattern::ALL2ALLV,
+                                          "All2AllV"))
             .AddAttribute("IncastFlowInterval",
                           "The interval of the incast flow",
                           TimeValue(Seconds(0)),
@@ -349,6 +352,11 @@ DcbTrafficGenApplication::GetTypeId()
                           BooleanValue(false),
                           MakeBooleanAccessor(&DcbTrafficGenApplication::m_isFixedFlowArrive),
                           MakeBooleanChecker())
+            .AddAttribute("InferBatchSize",
+                          "The batch size of infer",
+                          UintegerValue(4000),
+                          MakeUintegerAccessor(&DcbTrafficGenApplication::m_inferBatchSize),
+                          MakeUintegerChecker<uint32_t>())
             .AddAttribute("FlowType",
                           "The type of flow",
                           StringValue(""),
@@ -556,6 +564,51 @@ DcbTrafficGenApplication::HandleRead(Ptr<Socket> socket)
     }
 }
 
+uint32_t
+DcbTrafficGenApplication::GenDestNodeIdFromDestCdf()
+{
+    double randomValue = m_destCdfRng->GetValue();
+    auto it = std::lower_bound(m_destCdf.begin(), m_destCdf.end(), randomValue);
+    return it - m_destCdf.begin(); // Get the index of the found element
+}
+
+void
+DcbTrafficGenApplication::ConstructAll2AllVDestCdf()
+{
+    static std::vector<double> originalProb = {0.0020186727226848347,
+                                        0.0063083522583901085,
+                                        0.05677517032551098,
+                                        0.03305576583396417,
+                                        0.0035326772646984608,
+                                        0.07645722937168811,
+                                        0.17587686096391622,
+                                        0.012869038607115822,
+                                        0.22382033812768104,
+                                        0.0055513499873832955,
+                                        0.0035326772646984608,
+                                        0.0047943477163764825,
+                                        0.0070653545293969215,
+                                        0.15972747918243754,
+                                        0.20186727226848347,
+                                        0.026747413575574062};
+    double sum = 0.0;
+
+    for (uint32_t i = 0; i < originalProb.size(); ++i)
+    {
+        for (uint32_t j = 0; j < 4; ++j)
+        {
+            sum += originalProb[i] / 4;
+            m_destCdf.push_back(sum);
+            // std::cout << sum << " ";
+        }
+    }
+    std::cout<<"total size: "<<m_destCdf.size()<<std::endl;
+    m_destCdf.back() = 1.0;
+    m_destCdfRng = CreateObject<UniformRandomVariable>();
+    m_destCdfRng->SetAttribute("Min", DoubleValue(0.0));
+    m_destCdfRng->SetAttribute("Max", DoubleValue(1.0));
+}
+
 void
 DcbTrafficGenApplication::GenerateTraffic()
 {
@@ -590,6 +643,28 @@ DcbTrafficGenApplication::GenerateTraffic()
             }
         }
         break;
+    case ALL2ALLV:{
+        ConstructAll2AllVDestCdf();
+        for (uint32_t i = 0; i < m_inferBatchSize; i++)
+        {
+            std::unordered_set<uint32_t> nodes;
+            while (nodes.size() < 9)
+            {
+                uint32_t destNode = 0;
+                do
+                {
+                    destNode = GenDestNodeIdFromDestCdf();
+                } while (destNode == m_nodeIndex || nodes.find(destNode) != nodes.end());
+                nodes.insert(destNode);
+                m_destCnter[destNode]++;
+            }
+        }
+        while (!m_destCnter.empty())
+        {
+            ScheduleNextFlow(Simulator::Now());
+        }
+        break;
+    }
     case TrafficPattern::SEND_ONCE:
         // Schedule only once
         ScheduleNextFlow(Simulator::Now());
@@ -783,7 +858,7 @@ DcbTrafficGenApplication::GenerateTraffic()
 }
 
 uint32_t
-DcbTrafficGenApplication::GetDestinationNode() const
+DcbTrafficGenApplication::GetDestinationNode() 
 {
     NS_LOG_FUNCTION(this);
 
@@ -795,6 +870,10 @@ DcbTrafficGenApplication::GetDestinationNode() const
             return m_fileRequestMetadata->m_fileRequestIntervalDest[m_fileRequestIndex];
         case TrafficPattern::RING:
             return m_ringDestNode;
+        case TrafficPattern::ALL2ALLV:{
+            auto it = m_destCnter.begin();
+            return it->first;
+        }
         default:
             // randomly send to a host
             uint32_t destNode;
@@ -1440,14 +1519,19 @@ DcbTrafficGenApplication::GetNextFlowArriveInterval() const
 }
 
 inline uint32_t
-DcbTrafficGenApplication::GetNextFlowSize() const
+DcbTrafficGenApplication::GetNextFlowSize() 
 {
     switch (m_trafficPattern)
     {
     case TrafficPattern::CDF:
     case TrafficPattern::COFLOW_CDF:
         return m_flowSizeRng->GetInteger();
-
+    case TrafficPattern::ALL2ALLV:{
+        auto it = m_destCnter.begin();
+        uint32_t sz = it->second;
+        m_destCnter.erase(it);
+        return sz * 7000;
+    }
     default:
         return m_trafficSize;
     }

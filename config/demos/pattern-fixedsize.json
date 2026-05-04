@@ -115,6 +115,7 @@
                 "SendEnabled": true,
                 "TrafficPattern": "FixedSize",
                 "TrafficSizeBytes": 100000,
+                "TrafficLoad": 0.5,
                 "FixedFlowArrive": true,
                 "DestFixed": true,
                 "DestinationNode": 4

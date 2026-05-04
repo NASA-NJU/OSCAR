@@ -21,7 +21,10 @@
 #include "ns3/dcb-traffic-gen-application.h"
 #include "ns3/fifo-queue-disc-ecn.h"
 #include "ns3/json-utils.h"
+#include "ns3/ppfc-pausable-queue-disc.h"
 #include "ns3/rocev2-dcqcn.h"
+#include "ns3/rocev2-oscar.h"
+#include "ns3/rocev2-powertcp.h"
 #include "ns3/rocev2-prioplus-swift.h"
 #include "ns3/rocev2-hpcc.h"
 #include "ns3/rocev2-swift.h"
@@ -134,7 +137,16 @@ OutputStats(boost::json::object& conf,
         Time(outputObj["overallStatistics"].as_object().find("startTimeNs")->value().as_int64());
     Time finishTime =
         Time(outputObj["overallStatistics"].as_object().find("finishTimeNs")->value().as_int64());
-    ConstructSwitchStats(topology, switchStatsObj, startTime, finishTime);
+    BooleanValue enablePPfc = BooleanValue(false);
+    GlobalValue::GetValueByNameFailSafe("PPfcEnabled", enablePPfc);
+    if (enablePPfc.Get() == true)
+    {
+        ConstructPPFCSwitchStats(topology, switchStatsObj, startTime, finishTime);
+    }
+    else
+    {
+        ConstructSwitchStats(topology, switchStatsObj, startTime, finishTime);
+    }
     outputObj["switchStatistics"] = switchStatsObj.find("switchStats")->value();
 
     // Write the output object to file
@@ -326,15 +338,57 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
 
                     ccStatsObj["rate"] = rateArray;
 
+                    std::shared_ptr<RoCEv2Oscar::Stats> oscarCcStats =
+                        std::dynamic_pointer_cast<RoCEv2Oscar::Stats>(flowStats->ccStats);
                     std::shared_ptr<RoCEv2Hpcc::Stats> hpccCcStats =
                         std::dynamic_pointer_cast<RoCEv2Hpcc::Stats>(flowStats->ccStats);
+                    std::shared_ptr<RoCEv2Powertcp::Stats> powertcpCcStats =
+                        std::dynamic_pointer_cast<RoCEv2Powertcp::Stats>(flowStats->ccStats);
                     std::shared_ptr<RoCEv2Swift::Stats> swiftCcStats =
                         std::dynamic_pointer_cast<RoCEv2Swift::Stats>(flowStats->ccStats);
                     std::shared_ptr<RoCEv2Timely::Stats> timelyCcStats =
                         std::dynamic_pointer_cast<RoCEv2Timely::Stats>(flowStats->ccStats);
                     std::shared_ptr<RoCEv2PrioplusSwift::Stats> prioplusSwiftCcStats =
                         std::dynamic_pointer_cast<RoCEv2PrioplusSwift::Stats>(flowStats->ccStats);
-                    if (hpccCcStats != nullptr)
+                    if (oscarCcStats != nullptr)
+                    {
+                        boost::json::array delayArray;
+                        boost::json::array delayGradientBlsArray;
+                        boost::json::array delayGradientBls3Array;
+                        boost::json::array blsCompleteStatsArray;
+
+                        for (auto& [sendTime, recvTime, delay] : oscarCcStats->vPacketDelay)
+                        {
+                            delayArray.emplace_back(
+                                boost::json::object{{"sendTimeNs", sendTime.GetNanoSeconds()},
+                                                    {"recvTimeNs", recvTime.GetNanoSeconds()},
+                                                    {"delayNs", delay.GetNanoSeconds()}});
+                        }
+
+                        for (auto& [sendTime, recvTime, delayGradientBls] :
+                             oscarCcStats->vPacketDelayGradientBls)
+                        {
+                            delayGradientBlsArray.emplace_back(
+                                boost::json::object{{"sendTimeNs", sendTime.GetNanoSeconds()},
+                                                    {"recvTimeNs", recvTime.GetNanoSeconds()},
+                                                    {"delayGradient", delayGradientBls}});
+                        }
+
+                        for (auto& [sendTime, recvTime, delayGradientBls3] :
+                             oscarCcStats->vPacketDelayGradientBls3)
+                        {
+                            delayGradientBls3Array.emplace_back(
+                                boost::json::object{{"sendTimeNs", sendTime.GetNanoSeconds()},
+                                                    {"recvTimeNs", recvTime.GetNanoSeconds()},
+                                                    {"delayGradient", delayGradientBls3}});
+                        }
+
+                        ccStatsObj["delay"] = delayArray;
+                        ccStatsObj["delayGradientBls"] = delayGradientBlsArray;
+                        ccStatsObj["delayGradientBls3"] = delayGradientBls3Array;
+                        ccStatsObj["blsCompleteStats"] = blsCompleteStatsArray;
+                    }
+                    else if (hpccCcStats != nullptr)
                     {
                         boost::json::array delayArray;
                         boost::json::array uArray;
@@ -396,6 +450,48 @@ ConstructSenderFlowStats(ApplicationContainer& apps, FlowStatsObjMap& mFlowStats
 
                         ccStatsObj["delay"] = delayArray;
                         ccStatsObj["u"] = uArray;
+                    }
+                    else if (powertcpCcStats != nullptr)
+                    {
+                        boost::json::array delayArray;
+                        boost::json::array powerArray;
+
+                        for (auto& [sendTime, recvTime, delay] : powertcpCcStats->vPacketDelay)
+                        {
+                            delayArray.emplace_back(
+                                boost::json::object{{"sendTimeNs", sendTime.GetNanoSeconds()},
+                                                    {"recvTimeNs", recvTime.GetNanoSeconds()},
+                                                    {"delayNs", delay.GetNanoSeconds()}});
+                        }
+
+                        for (auto& [time, power] : powertcpCcStats->vPower)
+                        {
+                            powerArray.emplace_back(
+                                boost::json::object{{"timeNs", time.GetNanoSeconds()}, 
+                                                    {"power", power}});
+                        }
+
+                        ccStatsObj["delay"] = delayArray;
+                        ccStatsObj["power"] = powerArray;
+                    }
+                    else if (prioplusSwiftCcStats != nullptr)
+                    {
+                        boost::json::array completeStatsArray;
+
+                        for (RoCEv2PrioplusSwift::Stats::PrioplusSwiftCompleteStats& completeStats :
+                             prioplusSwiftCcStats->vPrioplusCompleteStats)
+                        {
+                            completeStatsArray.emplace_back(boost::json::object{
+                                {"timeNs", completeStats.tNow.GetNanoSeconds()},
+                                {"delayNs", completeStats.tDelay.GetNanoSeconds()},
+                                {"cwnd", completeStats.cwnd},
+                                {"incastAvoidanceRate", completeStats.dIncastAvoidance},
+                                {"aiPart", completeStats.aiPart},
+                                {"miPart", completeStats.miPart},
+                                {"mdPart", completeStats.mdPart}});
+                        }
+
+                        ccStatsObj["completeStats"] = completeStatsArray;
                     }
                     else if (swiftCcStats != nullptr)
                     {
@@ -706,6 +802,160 @@ ConstructSwitchStats(Ptr<DcTopology> topology,
                                                 {"throughputBitps", throughput.GetBitRate()}});
                     }
                     queueStatsObj.emplace("deviceThroughput", deviceThroughputArray);
+                }
+
+                // Add the queueStatsObj to the portStatsArray
+                portStatsArray.emplace_back(queueStatsObj);
+            }
+            // After iterating all the queues, add the pause/resume status to each queue
+            for (const auto& [time, prio, pr] : pStats->vPauseResumeTime)
+            {
+                // The time is the time when the pause/resume happens
+                // The prio is the priority of the pause/resume
+                // The pr is the pause/resume status
+                boost::json::object& queueStatsObj = portStatsArray[prio].as_object();
+                boost::json::array& pfcTimeArray = queueStatsObj["pfcTime"].as_array();
+                pfcTimeArray.emplace_back(
+                    boost::json::object{{"timeNs", time.GetNanoSeconds()},
+                                        {"pfcType", pr ? "pause" : "resume"}});
+            }
+
+            portStatsObj.emplace("queueStats", portStatsArray);
+            // Add the portStatsObj to the localSwitchStatsObj
+            localSwitchStatsArray.emplace_back(portStatsObj);
+        }
+
+        localSwitchStatsObj.emplace("portStats", localSwitchStatsArray);
+        // Add the switch stats to the switchStatsArray, use the node id as the key
+        switchStatsArray.emplace_back(localSwitchStatsObj);
+    }
+    switchStatsObj.emplace("switchStats", switchStatsArray);
+}
+
+void
+ConstructPPFCSwitchStats(Ptr<DcTopology> topology,
+                         boost::json::object& switchStatsObj,
+                         Time startTime,
+                         Time finishTime)
+{
+    boost::json::array switchStatsArray;
+    for (auto switchIter = topology->switches_begin(); switchIter != topology->switches_end();
+         switchIter++)
+    {
+        boost::json::object localSwitchStatsObj;
+        boost::json::array localSwitchStatsArray;
+        localSwitchStatsObj.emplace("switchId", topology->GetNodeIndex(switchIter->nodePtr));
+        const uint32_t ndev = switchIter->nodePtr->GetNDevices();
+        // Iterate all the devices of the switch
+        for (uint32_t devi = 0; devi < ndev; devi++)
+        {
+            Ptr<DcbNetDevice> dev = DynamicCast<DcbNetDevice>(switchIter->nodePtr->GetDevice(devi));
+            if (dev == nullptr)
+            {
+                continue;
+            }
+
+            // Get the PausableQueueDisc of the device
+            Ptr<PPfcPausableQueueDisc> pqd =
+                DynamicCast<PPfcPausableQueueDisc>(dev->GetQueueDisc());
+            if (pqd == nullptr)
+            {
+                // Note that we assume that the device has a PausableQueueDisc
+                NS_FATAL_ERROR("Cannot get PPFCPausableQueueDisc from DcbNetDevice");
+            }
+            std::shared_ptr<PPfcPausableQueueDisc::Stats> pStats = pqd->GetStats();
+            boost::json::object portStatsObj;
+            boost::json::array portStatsArray;
+            portStatsObj.emplace("portId", devi);
+            // Iterate all the queues of the device
+            uint8_t qIdx = 0;
+            for (std::shared_ptr<FifoQueueDiscEcn::Stats> qStats : pStats->vQueueStats)
+            {
+                boost::json::object queueStatsObj;
+                queueStatsObj.emplace("queueId", qIdx++);
+                queueStatsObj.emplace("maxQLengthPackets", qStats->nMaxQLengthPackets);
+                queueStatsObj.emplace("maxQLengthBytes", qStats->nMaxQLengthBytes);
+
+                // Calculate average and percentile queue length
+                // The calculate is only precise when detailedSwitchStats is false
+                std::vector<uint32_t> vQLengthBytes;
+                for (auto qLength : qStats->vQLengthBytes)
+                {
+                    vQLengthBytes.push_back(qLength.second);
+                }
+                if (!qStats->bDetailedQlengthStats)
+                {
+                    // Complement 0 queue length points according to (finishTime -
+                    // startTime) / qlengthRecordInterval
+                    StringValue sv;
+                    Time recordInterval = Time(0); // Must be set, otherwise fatal error before
+                    if (GlobalValue::GetValueByNameFailSafe("qlengthRecordInterval", sv))
+                        recordInterval = Time(sv.Get());
+                    uint32_t nPoints =
+                        ((double)finishTime.GetNanoSeconds() - (double)startTime.GetNanoSeconds()) /
+                        (double)recordInterval.GetNanoSeconds();
+                    while (vQLengthBytes.size() < nPoints)
+                    {
+                        vQLengthBytes.push_back(0);
+                    }
+                }
+                if (vQLengthBytes.size() != 0)
+                {
+                    std::sort(vQLengthBytes.begin(), vQLengthBytes.end());
+                    uint32_t nQLengthBytes = vQLengthBytes.size();
+                    uint32_t avgQLengthBytes =
+                        std::accumulate(vQLengthBytes.begin(), vQLengthBytes.end(), 0) /
+                        nQLengthBytes;
+                    uint32_t p95QLengthBytes = vQLengthBytes[0.95 * nQLengthBytes];
+                    uint32_t p99QLengthBytes = vQLengthBytes[0.99 * nQLengthBytes];
+                    queueStatsObj.emplace("avgQLengthBytes", avgQLengthBytes);
+                    queueStatsObj.emplace("p95QLengthBytes", p95QLengthBytes);
+                    queueStatsObj.emplace("p99QLengthBytes", p99QLengthBytes);
+                }
+
+                if (qStats->bDetailedQlengthStats)
+                {
+                    // Detailed stats
+                    boost::json::array qLengthArray;
+                    for (auto qLength : qStats->vQLengthBytes)
+                    {
+                        qLengthArray.emplace_back(
+                            boost::json::object{{"timeNs", qLength.first.GetNanoSeconds()},
+                                                {"lengthBytes", qLength.second}});
+                    }
+                    queueStatsObj.emplace("qLength", qLengthArray);
+
+                    // If background congestion control type is set, add the
+                    // backgroundCongestion
+                    if (qStats->backgroundCongestionTypeId != TypeId())
+                    {
+                        boost::json::array bgQlengthArray;
+                        for (auto bgQlength : qStats->vBackgroundQLengthBytes)
+                        {
+                            bgQlengthArray.emplace_back(
+                                boost::json::object{{"timeNs", bgQlength.first.GetNanoSeconds()},
+                                                    {"lengthBytes", bgQlength.second}});
+                        }
+                        queueStatsObj.emplace("backgroundQlength", bgQlengthArray);
+                    }
+
+                    boost::json::array ecnTimeArray;
+                    for (auto& [ecnTime, flowIdentifier, psn, size] : qStats->vEcn)
+                    {
+                        ecnTimeArray.emplace_back(
+                            boost::json::object{{"timeNs", ecnTime.GetNanoSeconds()},
+                                                {"srcAddr", flowIdentifier.GetSrcAddrString()},
+                                                {"srcPort", flowIdentifier.srcPort},
+                                                {"dstAddr", flowIdentifier.GetDstAddrString()},
+                                                {"dstPort", flowIdentifier.dstPort},
+                                                {"psn", psn},
+                                                {"sizeByte", size}});
+                    }
+                    queueStatsObj.emplace("ecnInfo", ecnTimeArray);
+
+                    // Add a pfcTimeArray to the queueStatsObj, which will be filled later
+                    boost::json::array pfcTimeArray;
+                    queueStatsObj.emplace("pfcTime", pfcTimeArray);
                 }
 
                 // Add the queueStatsObj to the portStatsArray

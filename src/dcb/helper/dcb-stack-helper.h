@@ -75,6 +75,8 @@ class DcbStackHelper : public PcapHelperForIpv4,
 
     void SetFCEnabled(bool enable);
 
+    void SetPPfcEnabled(bool enable);
+
     void InstallStack(Ptr<Node> node) const;
 
     /**
@@ -296,6 +298,7 @@ class DcbStackHelper : public PcapHelperForIpv4,
 
     ObjectFactory m_tcFactory;
     bool m_fcEnabled;
+    bool m_ppfcEnable;
 };
 
 } // namespace ns3

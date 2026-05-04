@@ -5,6 +5,44 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "program": "${file}",
+            "cwd": "${workspaceFolder}/config",
+            "args": [
+                "-n",
+                "rdma-simulator",
+                "-c",
+                "conext-paper/eval/channel/channel-width/error-scale-single-seed/",
+                "-a",
+                "applicationConfig::0::congestionConfig::ChannelWidthBytes",
+                "-b",
+                "10",
+                "-e",
+                "30",
+                "-u",
+                "KB",
+                "-s",
+                "21",
+                "-o",
+                "conext-paper/eval/channel/channel-width/error-scale-single-seed-width/"
+                // -s 2 -t 2 -a 2 -p 4 -o free-fat4.txt
+                // "-s",
+                // "16",
+                // "-t",
+                // "4",
+                // "-a",
+                // "4",
+                // "-p",
+                // "5",
+                // "-o",
+                // "free-fatxx.txt"
+            ],
+            "console": "integratedTerminal",
+            "justMyCode": true
+        },
+        {
             "name": "(gdb) Launch from scratch",
             "type": "cppdbg",
             "request": "launch",
@@ -100,7 +138,34 @@
             "request": "launch",
             "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
             "args": [
-                "config/demos/cc-tree4/cc-swift.json"
+                "config/porcc-sigcomm25/revision/harvest-queue.json"
+            ],
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "Build",
+            "environment": [
+                {
+                    "name": "LD_LIBRARY_PATH",
+                    "value": "${workspaceFolder}/build/lib/"
+                }
+            ],
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+            ],
+        },
+        {
+            "name": "(gdb) Launch rdma-simulator debug current config",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/scratch/ns3.40-rdma-simulator-debug",
+            "args": [
+                "${file}"
             ],
             "stopAtEntry": false,
             "cwd": "${workspaceFolder}",

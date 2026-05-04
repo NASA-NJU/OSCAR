@@ -26,6 +26,8 @@
 #include "ns3/core-config.h"
 #include "ns3/dcb-net-device.h"
 #include "ns3/dcb-pfc-port.h"
+#include "ns3/dcb-ppfc-port.h"
+#include "ns3/dcb-ppfc-traffic-control.h"
 #include "ns3/dcb-traffic-control.h"
 #include "ns3/global-router-interface.h"
 #include "ns3/global-value.h"
@@ -48,6 +50,7 @@
 #include "ns3/object.h"
 #include "ns3/packet-socket-factory.h"
 #include "ns3/pausable-queue-disc.h"
+#include "ns3/ppfc-pausable-queue-disc.h"
 #include "ns3/simulator.h"
 #include "ns3/string.h"
 #include "ns3/traffic-control-layer.h"
@@ -141,6 +144,7 @@ DcbStackHelper::Initialize()
     SetRoutingHelper(listRouting);
     SetRoutingHelper(staticRoutingv6);
     m_fcEnabled = false;
+    m_ppfcEnable = false;
     m_tcFactory.SetTypeId(TrafficControlLayer::GetTypeId());
 }
 
@@ -188,6 +192,12 @@ void
 DcbStackHelper::SetFCEnabled(bool enable)
 {
     m_fcEnabled = enable;
+}
+
+void
+DcbStackHelper::SetPPfcEnabled(bool enable)
+{
+    m_ppfcEnable = enable;
 }
 
 void
@@ -300,12 +310,12 @@ DcbStackHelper::InstallStack(Ptr<Node> node) const
         Ptr<Ipv4> ipv4 = node->GetObject<Ipv4>();
         Ptr<Ipv4RoutingProtocol> ipv4Routing = m_routing->Create(node);
         ipv4->SetRoutingProtocol(ipv4Routing);
-        // enable ECMP
-        int16_t priority;
-        Ptr<Ipv4ListRouting> routing = DynamicCast<Ipv4ListRouting>(ipv4Routing);
-        DynamicCast<Ipv4GlobalRouting>(routing->GetRoutingProtocol(0, priority))
-            ->SetAttribute("RandomEcmpRouting",
-                           UintegerValue(Ipv4GlobalRouting::EcmpMode::PER_FLOW_ECMP));
+        // ECMP config is added into the config file. the following become useless.
+        // int16_t priority;
+        // Ptr<Ipv4ListRouting> routing = DynamicCast<Ipv4ListRouting>(ipv4Routing);
+        // DynamicCast<Ipv4GlobalRouting>(routing->GetRoutingProtocol(0, priority))
+        //     ->SetAttribute("RandomEcmpRouting",
+        //                    UintegerValue(Ipv4GlobalRouting::EcmpMode::PER_PACKET_ECMP));
         // paramenter 0 should be consistent with Initialize()
     }
 
@@ -354,7 +364,15 @@ DcbStackHelper::InstallHostStack(Ptr<Node> node) const
 void
 DcbStackHelper::InstallSwitchStack(Ptr<Node> node)
 {
-    m_tcFactory.SetTypeId(TypeId::LookupByName("ns3::DcbTrafficControl"));
+    BooleanValue bv;
+    if (GlobalValue::GetValueByNameFailSafe("PPfcEnabled", bv) && bv.Get() == true)
+    {
+        m_tcFactory.SetTypeId(TypeId::LookupByName("ns3::DcbPPfcTrafficControl"));
+    }
+    else
+    {
+        m_tcFactory.SetTypeId(TypeId::LookupByName("ns3::DcbTrafficControl"));
+    }
     InstallStack(node);
     return;
 }

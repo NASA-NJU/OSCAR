@@ -107,7 +107,7 @@ class ParallelismMetadata : public Object
             NONE
         };
 
-        const static uint32_t GPUHZ = 4e7; //!< The GPU frequency
+        const static uint32_t GPUHZ = 3e8; //!< The GPU frequency
 
         Time m_fwd_computeTime;         //!< The forward compute time
         CommType m_fwd_communicateType; //!< The forward communicate type
@@ -336,7 +336,8 @@ class DcbTrafficGenApplication : public DcbBaseApplication
         CHECKPOINT,
         PARALLELISM,
         COFLOW_CDF,
-        RING
+        RING,
+        ALL2ALLV
     };
 
     virtual void FlowCompletes(Ptr<UdpBasedSocket> socket) override;
@@ -378,7 +379,7 @@ class DcbTrafficGenApplication : public DcbBaseApplication
      * If m_destNode is negative, return a random destination.
      * Else return m_destNode.
      */
-    uint32_t GetDestinationNode() const;
+    uint32_t GetDestinationNode();
 
     /**
      * \brief Get next random flow start time.
@@ -388,7 +389,7 @@ class DcbTrafficGenApplication : public DcbBaseApplication
     /**
      * \brief Get next random flow size in bytes.
      */
-    uint32_t GetNextFlowSize() const;
+    uint32_t GetNextFlowSize();
 
     // helpers
     /**
@@ -421,6 +422,8 @@ class DcbTrafficGenApplication : public DcbBaseApplication
      * \param socket the socket the packet was received to.
      */
     virtual void HandleRead(Ptr<Socket> socket) override;
+    uint32_t GenDestNodeIdFromDestCdf();
+    void ConstructAll2AllVDestCdf();
 
     std::shared_ptr<Stats> m_stats;
 
@@ -522,6 +525,10 @@ class DcbTrafficGenApplication : public DcbBaseApplication
     static std::vector<bool> m_bgFlowFinished; //!< Whether the background flows are finished
 
     void SetFlowType(std::string flowType);
+    std::vector<double> m_destCdf;           //<! The destination CDF for all2allv
+    Ptr<UniformRandomVariable> m_destCdfRng; //!< The destination random generator
+    std::map<uint32_t, uint32_t> m_destCnter;  //<! The destination counter for all2allv
+    uint32_t m_inferBatchSize;
 }; // class DcbTrafficGenApplication
 
 } // namespace ns3

@@ -190,6 +190,11 @@ RoCEv2Dcqcn::UpdateRate()
 {
     NS_LOG_FUNCTION(this);
 
+    if (Simulator::GetContext() == 1)
+    {
+        NS_LOG_DEBUG("DCQCN: Update rate at time " << Simulator::Now().GetMicroSeconds() << "us");
+    }
+
     double curRateRatio = m_sockState->GetRateRatioPercent();
     double old = curRateRatio;
     if (m_rateUpdateIter > m_F && m_bytesUpdateIter > m_F)

@@ -31,6 +31,7 @@
 #include "ns3/object.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
+#include "ns3/enum.h"
 
 #include <cstring>
 #include <iomanip>
@@ -58,9 +59,14 @@ Ipv4GlobalRouting::GetTypeId()
             .SetGroupName("Internet")
             .AddAttribute("RandomEcmpRouting",
                           "Set according to EcmpMode (NONE, PER_PACKET_ECMP, PER_FLOW_ECMP)",
-                          UintegerValue(0),
-                          MakeUintegerAccessor(&Ipv4GlobalRouting::m_randomEcmpRouting),
-                          MakeUintegerChecker<uint32_t>(0, 2))
+                          EnumValue(Ipv4GlobalRouting::EcmpMode::PER_FLOW_ECMP),
+                          MakeEnumAccessor(&Ipv4GlobalRouting::m_randomEcmpRouting),
+                          MakeEnumChecker(Ipv4GlobalRouting::EcmpMode::NONE,
+                                          "None",
+                                          Ipv4GlobalRouting::EcmpMode::PER_PACKET_ECMP,
+                                          "PerPacket",
+                                          Ipv4GlobalRouting::EcmpMode::PER_FLOW_ECMP,
+                                          "PerFlow"))
             .AddAttribute("RespondToInterfaceEvents",
                           "Set to true if you want to dynamically recompute the global routes upon "
                           "Interface notification events (up/down, or add/remove address)",

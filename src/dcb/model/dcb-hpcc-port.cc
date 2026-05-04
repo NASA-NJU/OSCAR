@@ -20,6 +20,7 @@
 #include "dcb-hpcc-port.h"
 
 #include "rocev2-congestion-ops.h"
+#include "rocev2-dcqcn-int.h"
 #include "rocev2-hpcc.h"
 #include "rocev2-l4-protocol.h"
 #include "rocev2-poseidon.h"
@@ -93,7 +94,8 @@ DcbHpccPort::DoEgressProcess(Ptr<Packet> packet)
     if (packet->PeekPacketTag(ctTag))
     {
         if (ctTag.GetCongestionTypeId() == RoCEv2Hpcc::GetTypeId() ||
-            ctTag.GetCongestionTypeId() == RoCEv2Powertcp::GetTypeId())
+            ctTag.GetCongestionTypeId() == RoCEv2Powertcp::GetTypeId()||
+            ctTag.GetCongestionTypeId() == RoCEv2DcqcnInt::GetTypeId())
         {
             style = HPCC;
         }

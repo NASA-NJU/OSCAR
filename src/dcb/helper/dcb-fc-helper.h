@@ -23,6 +23,11 @@
 #include "ns3/dcb-hpcc-port.h"
 #include "ns3/dcb-pfc-mmu-queue.h"
 #include "ns3/dcb-pfc-port.h"
+#include "ns3/dcb-ppfc-mmu-queue.h"
+#include "ns3/dcb-ppfc-port.h"
+#include "ns3/dcb-ppfc-traffic-control.h"
+#include "ns3/ppfc-frame.h"
+#include "ns3/ppfc-pausable-queue-disc.h"
 #include "ns3/object.h"
 #include "ns3/object-factory.h"
 
@@ -50,6 +55,11 @@ class DcbFcHelper
     static void InstallHpccPFCtoNodePort(Ptr<Node> node,
                                          const uint32_t port,
                                          const DcbPfcPortConfig& config);
+    static void InstallPPfctoSwitch(Ptr<Node> node,
+                                    const uint32_t port,
+                                    const DcbPPfcPortConfig& config,
+                                    const uint32_t qNum);
+    static void InstallPPfctoHost(Ptr<Node> node, const uint32_t port, const uint32_t qNum);
 
     /**
      * \brief Install all fc-related objects to the node

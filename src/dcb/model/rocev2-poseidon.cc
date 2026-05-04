@@ -163,6 +163,12 @@ RoCEv2Poseidon::UpdateStateWithRcvACK(Ptr<Packet> ack,
     cwnd = std::min(cwnd, m_sockState->GetBaseBdp() * 1.);
 
     SetCwnd(ceil(cwnd));
+    // Record for statistics, do not affect the cwnd and rateRatio
+    // m_stats->RecordCcRate(*(m_sockState->GetDeviceRate()) * (static_cast<double>(cwnd) * 8. /
+    // delay.GetSeconds() / m_sockState->GetDeviceRate()->GetBitRate()));
+    m_stats->RecordCcRate(*(m_sockState->GetDeviceRate()) *
+                          (static_cast<double>(cwnd) * 8. / m_sockState->GetBaseRtt().GetSeconds() /
+                           m_sockState->GetDeviceRate()->GetBitRate()));
 }
 
 std::string

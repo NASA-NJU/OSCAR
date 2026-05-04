@@ -17,6 +17,7 @@
 *.tr
 *.code-workspace
 tmp.txt
+callgrind.out.*
 [D|U]l[A-Z][a-z]*Stats.txt
 
 \#*#
@@ -62,3 +63,8 @@ output/
 
 # Ignore patches
 *.patch
+
+# run script
+run.sh
+
+debug.txt

@@ -1127,7 +1127,7 @@ macro(process_options)
   endif()
 
   mark_as_advanced(Boost_INCLUDE_DIR)
-  find_package(Boost 1.75 REQUIRED)
+  find_package(Boost 1.80 REQUIRED)
   if(${Boost_FOUND})
     include_directories(${Boost_INCLUDE_DIRS})
     set(CMAKE_REQUIRED_INCLUDES ${Boost_INCLUDE_DIRS})

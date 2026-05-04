@@ -147,6 +147,33 @@ class RoCEv2Hpcc : public RoCEv2CongestionOps
 
     IntHop m_hops[HpccHeader::MAX_HOP]; //!< L in paper, storing link feedbacks
 
+    /***** Members for experiment mode *****/
+    bool m_experimentMode; //!< Whether to enable the experiment mode.
+    std::vector<std::pair<Time, double>>
+        m_experimentStates; //!< Experiment states. A vector of <time, rateRatio>
+    /**
+     * \brief Update the experiment state.
+     * \param idx The index of the experiment state.
+     */
+    void UpdateExperimentState(uint32_t idx);
+    bool m_immediateMode; //!< Whether to enable the immediate mode, no EWMA for u 
+    bool m_refFixMode; //!< Whether to fix the refrence rate 
+    std::map<uint32_t, double> m_refMap; //!< The reference rate map
+    double WindowRatio(); //!< The ratio of window-based rate to rate-based rate
+
+    static inline std::vector<std::pair<Time, double>> longFlowStates = {
+        {Seconds(0.1), 1.0},
+        {Seconds(0.1005) + Time("50us"), 0.2},
+        // {Seconds(0.1005) + Time("120us"), 0.1},
+        {Seconds(0.1015) + Time("50us"), 1.}
+    };
+    static inline std::vector<std::pair<Time, double>> shortFlowStates = {
+        {Seconds(0.1005), 1.0},
+        {Seconds(0.1005) + Time("50us"), 0.2},
+        // {Seconds(0.1005) + Time("120us"), 0.1},
+        {Seconds(0.1015), 0.}
+    };
+
 }; // class RoCEv2Hpcc
 
 } // namespace ns3

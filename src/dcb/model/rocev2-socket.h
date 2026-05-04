@@ -21,6 +21,7 @@
 #define ROCEV2_SOCKET_H
 
 #include "rocev2-congestion-ops.h"
+#include "rocev2-oscar.h"
 #include "rocev2-prioplus-ledbat.h"
 #include "rocev2-prioplus-swift.h"
 #include "udp-based-socket.h"
@@ -39,7 +40,8 @@ class IrnHeader;
 enum RoCEv2RetxMode : uint8_t
 {
     GBN, // Go Back N
-    IRN  // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    IRN,  // Improved RoCE NIC, see Revisiting Network Support for RDMA by Mittal et al.
+    NONE // No retransmission, for packet spraying only.
 };
 
 class DcbTxBuffer : public Object
@@ -568,7 +570,6 @@ class RoCEv2Socket : public UdpBasedSocket
 
         std::string flowTag; //<! The tag of the flow to identify it, configured by the application
 
-        // The pointer to the RoCEv2Harvest::Stats
         std::shared_ptr<RoCEv2CongestionOps::Stats> ccStats;
 
         // Recorder function of the detailed statistics

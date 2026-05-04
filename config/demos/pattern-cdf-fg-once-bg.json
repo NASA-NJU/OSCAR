@@ -3,7 +3,7 @@
         "topo": "config/topo/simple-tree4.txt"
     },
     "outputFile": {
-        "resultFile": "output/*.json"
+        "resultFile": "output/*-app.json"
     },
     "runtimeConfig": {
         "seed": 15,

@@ -59,11 +59,26 @@ RoCEv2Hpcc::GetTypeId()
                           DoubleValue(0.0005),
                           MakeDoubleAccessor(&RoCEv2Hpcc::m_raiRatio),
                           MakeDoubleChecker<double>())
+            .AddAttribute("ExperimentMode",
+                          "Whether to enable experiment mode",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&RoCEv2Hpcc::m_experimentMode),
+                          MakeBooleanChecker())
             .AddAttribute("StartRefRateRatio",
                           "HPCC's start reference rate ratio",
                           DoubleValue(1),
                           MakeDoubleAccessor(&RoCEv2Hpcc::m_cRateRatio),
-                          MakeDoubleChecker<double>());
+                          MakeDoubleChecker<double>())
+            .AddAttribute("ImmediateMode",
+                          "Whether to enable the immediate mode, i.e., no EWMA for u ",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&RoCEv2Hpcc::m_immediateMode),
+                          MakeBooleanChecker())
+            .AddAttribute("RefFixMode",
+                          "Whether to fix the refrence rate ",
+                          BooleanValue(false),
+                          MakeBooleanAccessor(&RoCEv2Hpcc::m_refFixMode),
+                          MakeBooleanChecker());
     return tid;
 }
 
@@ -97,6 +112,22 @@ RoCEv2Hpcc::SetReady()
     // Reload any config before starting
     SetLimiting(true);
     SetRateRatio(m_startRateRatio);
+
+    if (m_experimentMode)
+    {
+        if (Simulator::GetContext() == 0)
+        {
+            m_experimentStates = longFlowStates;
+        }
+        else
+        {
+            m_experimentStates = shortFlowStates;
+        }
+        Simulator::Schedule(m_experimentStates[0].first - Simulator::Now(),
+                            &RoCEv2Hpcc::UpdateExperimentState,
+                            this,
+                            0);
+    }
 }
 
 void
@@ -114,6 +145,18 @@ RoCEv2Hpcc::UpdateStateSend(Ptr<Packet> packet)
 
     // Record the packet send time, used to calc the RTT
     m_stats->RecordPacketSend(roceHeader.GetPSN(), Simulator::Now());
+
+    if (m_refFixMode)
+    {
+        m_refMap[roceHeader.GetPSN()] = m_sockState->GetRateRatioPercent();
+    }
+}
+
+double
+RoCEv2Hpcc::WindowRatio()
+{
+    return m_sockState->GetTxBuffer()->InflightPkts() * m_sockState->GetPacketSize() /
+           ((double)m_sockState->GetBaseBdp());
 }
 
 void
@@ -144,6 +187,11 @@ RoCEv2Hpcc::UpdateStateWithRcvACK(Ptr<Packet> ack,
     uint32_t nhop = hpccHeader.m_nHop;
 
     uint32_t ackSeq = roce.GetPSN();
+
+    if (m_refFixMode)
+    {
+        m_cRateRatio = m_refMap[ackSeq];
+    }
 
     if (m_lastUpdateSeq != 0)
     {
@@ -195,6 +243,10 @@ RoCEv2Hpcc::MeasureInflight(const HpccHeader& hpccHeader)
     }
     double frab = tau.GetSeconds() / baseRtt.GetSeconds();
     m_u = m_u * (1.0 - frab) + u * frab; // Algorithm Line 9
+    if (m_immediateMode)
+    {
+        m_u = u;
+    }
 
     m_stats->RecordU(u);
 }
@@ -202,6 +254,11 @@ RoCEv2Hpcc::MeasureInflight(const HpccHeader& hpccHeader)
 void
 RoCEv2Hpcc::UpdateRate(bool updateCurrent)
 {
+    if (m_experimentMode)
+    {
+        return;
+    }
+
     double uNormal = m_u / m_targetUtil;
     double newRateRatio;
     uint32_t newIncStage;
@@ -223,6 +280,11 @@ RoCEv2Hpcc::UpdateRate(bool updateCurrent)
     {
         m_cRateRatio = m_sockState->CheckRateRatio(newRateRatio);
         m_incStage = newIncStage;
+        if (m_immediateMode)
+        {
+            std::cout << Simulator::Now().GetMicroSeconds() << "us, u: " << m_u
+                      << " rate: " << m_cRateRatio << std::endl;
+        }
     }
 }
 
@@ -232,6 +294,23 @@ RoCEv2Hpcc::CopyIntHop(const IntHop* src, uint32_t nhop)
     for (uint32_t i = 0; i < nhop; i++)
     {
         m_hops[i] = src[i];
+    }
+}
+
+void
+RoCEv2Hpcc::UpdateExperimentState(uint32_t idx)
+{
+    if (idx >= m_experimentStates.size())
+    {
+        return;
+    }
+    SetRateRatio(m_experimentStates[idx].second);
+    if (idx + 1 < m_experimentStates.size())
+    {
+        Simulator::Schedule(m_experimentStates[idx + 1].first - Simulator::Now(),
+                            &RoCEv2Hpcc::UpdateExperimentState,
+                            this,
+                            idx + 1);
     }
 }
 

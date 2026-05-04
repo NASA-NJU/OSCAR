@@ -265,12 +265,31 @@ ConstructLinkConfig(const boost::json::array& linkConfigArray)
     return linkConfigMap;
 }
 
-static void
-InstallLink(const LinkConfig& linkConfig, Ptr<DcbNetDevice> dev1, Ptr<DcbNetDevice> dev2)
+static void InstallLink(const LinkConfig& linkConfig,
+                        std::optional<boost::json::object> linkFailureConfigObj,
+                        Ptr<DcbNetDevice> dev1,
+                        Ptr<DcbNetDevice> dev2)
 {
     dev1->SetAttribute("DataRate", DataRateValue(linkConfig.rate));
     dev2->SetAttribute("DataRate", DataRateValue(linkConfig.rate));
-
+    Ptr<Node> node1 = dev1->GetNode(), node2 = dev2->GetNode();
+    // Simulator::ScheduleNow(MakeBoundCallback(f, node1));
+    if (linkFailureConfigObj.has_value()){
+        uint32_t srcNode = JsonGetInt64OrRaise((*linkFailureConfigObj), "SrcNode", "SrcNode is not found");
+        uint32_t dstNode = JsonGetInt64OrRaise((*linkFailureConfigObj), "DstNode", "DstNode is not found");
+        if ((node1->GetId() == srcNode && node2->GetId() == dstNode) || (node1->GetId() == dstNode && node2->GetId() == srcNode)){
+            std::string startTimeStr = JsonGetStringOrRaise((*linkFailureConfigObj), "StartTime", "StartTime is not found");
+            std::string lastingTimeStr = JsonGetStringOrRaise((*linkFailureConfigObj), "LastingTime", "LastingTime is not found");
+            std::string failBandwidthStr = JsonGetStringOrRaise((*linkFailureConfigObj), "FailBandwidth", "FailBandwidth is not found");
+            Time startTime = Time(startTimeStr);
+            Time lastingTime = Time(lastingTimeStr);
+            DataRate failBandwidth = DataRate(failBandwidthStr);
+            Ptr<DcbNetDevice> srcDev = node1->GetId() == srcNode ? dev1 : dev2;
+            std::cout<< "Link failure between node " << node1->GetId() << " and node " << node2->GetId() << " from " << startTime.GetNanoSeconds() << " to " << (startTime + lastingTime).GetNanoSeconds() << " with bandwidth " << failBandwidth << std::endl;
+            Simulator::ScheduleWithContext(node1->GetId(), startTime, &DcbNetDevice::SetAttribute, srcDev, "DataRate", DataRateValue(failBandwidth));
+            Simulator::ScheduleWithContext(node1->GetId(), startTime + lastingTime, &DcbNetDevice::SetAttribute, srcDev, "DataRate", DataRateValue(linkConfig.rate));
+        }
+    }
     Ptr<DcbChannel> channel = CreateObject<DcbChannel>();
     channel->SetAttribute("Delay", TimeValue(linkConfig.delay));
 
@@ -435,6 +454,10 @@ BuildTopology(boost::json::object& configObj)
         JsonGetObjectOrRaise(configObj, "topologyConfig", "topologyConfig is not found");
     boost::json::array linkConfigObj =
         JsonGetArrayOrRaise(topoObj, "linkConfig", "linkConfig is not found");
+    std::optional<boost::json::object> linkFailureConfigObj =
+        topoObj.find("LinkFailureConfig") != topoObj.end()
+            ? std::make_optional(topoObj["LinkFailureConfig"].as_object())
+            : std::nullopt;
     std::unique_ptr<LinkConfigMap> linkConfigMap = ConstructLinkConfig(linkConfigObj);
     for (uint32_t i = 0; i < link_num; i++)
     {
@@ -470,7 +493,7 @@ BuildTopology(boost::json::object& configObj)
             }
         }
         // Install link
-        InstallLink(linkConfigMap->find(type)->second, vDevs[0], vDevs[1]);
+        InstallLink(linkConfigMap->find(type)->second, linkFailureConfigObj, vDevs[0], vDevs[1]);
     }
 
     // Install flow control protocols after building the topology
@@ -494,9 +517,6 @@ BuildTopology(boost::json::object& configObj)
     topology->CreateDelayMap();
     topology->LogDelayMap();
 
-    // Calculate the propagation delay between each pair of hosts, and store it in the topology
-    topology->CreateDelayMap();
-    topology->LogDelayMap();
 
     return topology;
 }

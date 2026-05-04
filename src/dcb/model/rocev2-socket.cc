@@ -20,6 +20,7 @@
 #include "rocev2-socket.h"
 
 #include "dcb-net-device.h"
+#include "dcb-ppfc-traffic-control.h"
 #include "rocev2-l4-protocol.h"
 #include "udp-based-l4-protocol.h"
 #include "udp-based-socket.h"
@@ -60,7 +61,7 @@ RoCEv2Socket::GetTypeId()
                           "The retransmission mode",
                           EnumValue(RoCEv2RetxMode::GBN),
                           MakeEnumAccessor(&RoCEv2Socket::m_retxMode),
-                          MakeEnumChecker(RoCEv2RetxMode::GBN, "GBN", RoCEv2RetxMode::IRN, "IRN"))
+                          MakeEnumChecker(RoCEv2RetxMode::GBN, "GBN", RoCEv2RetxMode::IRN, "IRN", RoCEv2RetxMode::NONE, "None"))
             .AddAttribute("CNPInterval",
                           "The CNP interval",
                           TimeValue(MicroSeconds(50)),
@@ -228,6 +229,21 @@ RoCEv2Socket::SendPendingPacket()
     // }
     Ptr<RoCEv2L4Protocol> rocev2Proto = DynamicCast<RoCEv2L4Protocol>(m_innerProto);
     uint32_t outPortPriority = IpTos2Priority(GetIpTos());
+    Ptr<TrafficControlLayer> tc = GetNode()->GetObject<TrafficControlLayer>();
+    Ptr<DcbPPfcTrafficControl> ppfcTc = DynamicCast<DcbPPfcTrafficControl>(tc);
+    if (ppfcTc != nullptr)
+    {
+        uint32_t devIdx = m_boundnetdevice->GetIfIndex();
+        Ipv4Address dstIp = Ipv4Address::ConvertFrom(m_defaultAddress);
+        uint32_t srcPort = m_endPoint->GetLocalPort();
+        uint32_t dstPort = m_endPoint->GetPeerPort();
+        outPortPriority = ppfcTc->GetEgressPriority(devIdx,
+                                                    m_localAddress,
+                                                    dstIp,
+                                                    srcPort,
+                                                    dstPort,
+                                                    GetPriority());
+    }
     if (rocev2Proto->CheckCouldSend(m_boundnetdevice->GetIfIndex(), outPortPriority) == false)
     {
         // The queue disc is unavaliable, register a callback to RoCEv2L4Proto and wait for the
@@ -394,7 +410,10 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
     {
     case AETHeader::SyndromeType::FC_DISABLED: { // normal ACK
         // Note that the psn in ACK's BTH is expected PSN, not the PSN of the ACKed packet
-        m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
+        // std::cout << "Node " << m_node->GetId() << " receive ACK for PSN " << roce.GetPSN() - 1
+        //           << " at " << Simulator::Now().GetNanoSeconds() << "ns" << std::endl;
+        if (roce.GetPSN() > 0)
+            m_txBuffer.AcknowledgeTo(roce.GetPSN() - 1);
 
         if (m_txBuffer.GetFrontPsn() == m_psnEnd)
         {
@@ -419,6 +438,10 @@ RoCEv2Socket::HandleACK(Ptr<Packet> packet, const RoCEv2Header& roce)
             IrnHeader irnH;
             packet->RemoveHeader(irnH);
             IrnReactToNack(roce.GetPSN(), irnH);
+        }
+        else if (m_retxMode == NONE)
+        {
+            // Do nothing
         }
         break;
     }
@@ -501,7 +524,7 @@ RoCEv2Socket::HandleDataPacket(Ptr<Packet> packet,
     // If ack packet is smaller than 64B, use payload to pad it
     uint32_t ackPayloadSize = ackHeaderSize < 64 ? 64 - ackHeaderSize : 0;
 
-    if (psn <= expectedPSN)
+    if (psn <= expectedPSN || m_retxMode == RoCEv2RetxMode::NONE)
     {
         // FIXME < is for the case of ack has been lost
         // The packet is in order
@@ -746,15 +769,7 @@ RoCEv2Socket::SetCcOps(TypeId congTypeId)
     // Record the congestion type
     m_congTypeId = congTypeId;
 
-    // Set SendProbePacket and SendPendingPacket callbacks for RoCEv2Prioplus
-
-    if (congTypeId == RoCEv2PrioplusLedbat::GetTypeId())
-    {
-        Ptr<RoCEv2PrioplusLedbat> prioplus = DynamicCast<RoCEv2PrioplusLedbat>(algo);
-        prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
-        prioplus->SetSendPendingDataCb(MakeCallback(&RoCEv2Socket::SendPendingPacket, this));
-    }
-    else if (congTypeId == RoCEv2PrioplusSwift::GetTypeId())
+    if (congTypeId == RoCEv2PrioplusSwift::GetTypeId())
     {
         Ptr<RoCEv2PrioplusSwift> prioplus = DynamicCast<RoCEv2PrioplusSwift>(algo);
         prioplus->SetSendProbeCb(MakeCallback(&RoCEv2Socket::SendProbePacket, this));
@@ -972,6 +987,12 @@ RoCEv2Socket::RetransmissionTimeout()
         // m_txBuffer.RetransmitRange(m_txBuffer.GetFrontPsn(), m_txBuffer.GetMaxAckedPsn()-1);
         m_txBuffer.RetransmitFrom(m_txBuffer.GetFrontPsn());
     }
+    else if (m_retxMode == RoCEv2RetxMode::NONE)
+    {
+        // Do nothing
+        return;
+    }
+    
 
     // Reschedule the retransmission timer
     Time rtoTime = GetRTOTime();
@@ -1005,6 +1026,10 @@ RoCEv2Socket::GetRTOTime()
             return m_irnRtoLow;
         }
     }
+    else if (m_retxMode == NONE)
+    {
+        return m_rto;
+    }
     else
     {
         NS_ASSERT_MSG(false, "wrong rtx mode");
@@ -1024,11 +1049,11 @@ RoCEv2Socket::IpTos2Priority(uint8_t ipTos)
 bool
 RoCEv2Socket::SendProbePacket(uint32_t psn)
 {
-    // Check the m_congTypeId, should be RoCEv2Prioplus
+    // Check the m_congTypeId; only congestion controls with probe support should get here.
     NS_ASSERT_MSG(
-        m_congTypeId == RoCEv2PrioplusLedbat::GetTypeId() ||
+        m_congTypeId == RoCEv2Oscar::GetTypeId() ||
             m_congTypeId == RoCEv2PrioplusSwift::GetTypeId(),
-        "Sending probe, but the congestion control type of the socket is not RoCEv2Prioplus.");
+        "Sending probe, but the congestion control type of the socket does not support probes.");
 
     // if (!CheckQueueDiscAvaliable(GetPriority()))
     // {
@@ -1082,12 +1107,7 @@ RoCEv2Socket::HandleProbePacket(Ptr<Packet> packet,
     switch (roce.GetOpcode())
     {
     case RoCEv2Header::Opcode::RC_ACK:
-        if (m_ccOps->GetInstanceTypeId() == RoCEv2PrioplusLedbat::GetTypeId())
-            DynamicCast<RoCEv2PrioplusLedbat>(m_ccOps)->UpdateStateWithRecvProbeAck(
-                packet,
-                roce,
-                m_txBuffer.NextSendPsn());
-        else if (m_ccOps->GetInstanceTypeId() == RoCEv2PrioplusSwift::GetTypeId())
+        if (m_ccOps->GetInstanceTypeId() == RoCEv2PrioplusSwift::GetTypeId())
             DynamicCast<RoCEv2PrioplusSwift>(m_ccOps)->UpdateStateWithRecvProbeAck(
                 packet,
                 roce,
@@ -1126,8 +1146,10 @@ RoCEv2Socket::SendProbeAckPacket(Ptr<Packet> packet,
                                  const RoCEv2Header& roce)
 {
     PrioplusHeader prioplusHeader;
-    uint32_t ackHeaderSize = m_innerProto->GetHeaderSize() + 4 +
-                             prioplusHeader.GetSerializedSize(); // 4 bytes for AETHeader
+    uint32_t ccHeaderSize = prioplusHeader.GetSerializedSize();
+
+    uint32_t ackHeaderSize =
+        m_innerProto->GetHeaderSize() + 4 + ccHeaderSize; // 4 bytes for AETHeader
     // If ack packet is smaller than 64B, use payload to pad it
     uint32_t ackPayloadSize = ackHeaderSize < 64 ? 64 - ackHeaderSize : 0;
 
@@ -1136,7 +1158,7 @@ RoCEv2Socket::SendProbeAckPacket(Ptr<Packet> packet,
                                                     roce.GetPSN(),
                                                     ackPayloadSize);
 
-    // Add the PrioplusHeader to the packet
+    // Add the probe ACK timestamp header matching the congestion control.
     RoCEv2Header roceHeader;
     ack->RemoveHeader(roceHeader);
     ack->AddHeader(prioplusHeader);
@@ -1629,6 +1651,9 @@ DcbRxBuffer::Add(uint32_t psn, Ipv4Header ipv4, RoCEv2Header roce, Ptr<Packet> p
             NS_LOG_DEBUG("RoCEv2 socket receives duplicate packet "
                          << psn << " at " << Simulator::Now().GetNanoSeconds() << "ns.");
         }
+    }
+    if (m_retxMode == RoCEv2RetxMode::NONE){
+        m_buffer.emplace(psn, DcbRxBufferItem(ipv4, roce, payload));
     }
 
     // Check and forward the in order packets

@@ -102,6 +102,18 @@ void ConstructSwitchStats(Ptr<DcTopology> topology,
                           Time finishTime);
 
 /**
+ * \brief Construct switch stats.
+ * \param topology The topology, used to get the switch.
+ * \param switchStatsObjs The map to store the switch stats.
+ * \param startTime The start time of the simulation, used to calc avg qlength.
+ * \param finishTime The finish time of the last flow, used to calc avg qlength.
+ */
+void ConstructPPFCSwitchStats(Ptr<DcTopology> topology,
+                              boost::json::object& switchStatsObjs,
+                              Time startTime,
+                              Time finishTime);
+
+/**
  * \brief Disable the detailed switch stats for some switches.
  *
  * Used to save time and space when the topology is large.

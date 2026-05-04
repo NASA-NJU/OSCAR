@@ -62,6 +62,8 @@ NS_LOG_COMPONENT_DEFINE("ScratchSimulator");
                                          uint8_t prio,
                                          bool isPause);
 
+uint64_t g_totalPfcPause = 0;
+
 int
 main(int argc, char* argv[])
 {
@@ -90,7 +92,8 @@ main(int argc, char* argv[])
     // LogComponentEnable ("FifoQueueDiscEcn", LOG_LEVEL_INFO);
     LogComponentEnable("ScratchSimulator", LOG_LEVEL_DEBUG);
     // LogComponentEnable("JsonTopologyHelper", LOG_LEVEL_DEBUG);
-    // LogComponentEnable("ChannelRingApplication", LOG_DEBUG);
+    LogComponentEnable("RoCEv2DcqcnInt", LOG_DEBUG);
+    // LogComponentEnable("RoCEv2Socket", LOG_DEBUG);
 
     Time::SetResolution(Time::PS);
 
@@ -122,21 +125,34 @@ main(int argc, char* argv[])
     // Config::ConnectWithoutContext("/NodeList/*/DeviceList/*/PhyTxBeginWithId",
     //                               MakeCallback(&PhyTxBegin));
     // // Bind the callback to the pausable queue disc, no config system can be used
-    // Config::MatchContainer devs = Config::LookupMatches("/NodeList/*/DeviceList/*");
-    // for (auto& dev : devs)
-    // {
-    //     Ptr<DcbNetDevice> device = DynamicCast<DcbNetDevice>(dev);
-    //     if (device == nullptr)
-    //     {
-    //         continue;
-    //     }
-    //     Ptr<PausableQueueDisc> qdisc = device->GetQueueDisc();
-    //     if (qdisc != nullptr)
-    //     {
-    //         qdisc->TraceConnectWithoutContext("EnqueueWithId",
-    //         MakeCallback(&QdiscEnqueueWithId));
-    //     }
-    // }
+    Config::MatchContainer devs = Config::LookupMatches("/NodeList/*/DeviceList/*");
+    for (auto& dev : devs)
+    {
+        Ptr<DcbNetDevice> device = DynamicCast<DcbNetDevice>(dev);
+        if (device == nullptr)
+        {
+            continue;
+        }
+        // Ptr<PausableQueueDisc> qdisc = device->GetQueueDisc();
+        // if (qdisc != nullptr)
+        // {
+        //     qdisc->TraceConnectWithoutContext("EnqueueWithId",
+        //     MakeCallback(&QdiscEnqueueWithId));
+        // }
+        // Set ECN threshold for 200Gbps and 400Gbps links manually
+        DataRate rate = device->GetDataRate();
+        Ptr<PausableQueueDisc> qdisc = device->GetQueueDisc();
+        // std::cout << "A device with rate " << rate.GetBitRate() << "bps" << std::endl;
+        if (rate.GetBitRate() == 200e9)
+        {
+            qdisc->SetEcnThres("800KB", "3200KB");
+        }
+        else if (rate.GetBitRate() == 400e9)
+        {
+            qdisc->SetEcnThres("1600KB", "6400KB");
+        }
+        
+    }
     // // Bind the PFC traces
     // Config::MatchContainer tcs = Config::LookupMatches("/NodeList/*/$ns3::DcbTrafficControl");
     // for (auto& tc : tcs)
@@ -160,6 +176,8 @@ main(int argc, char* argv[])
     Simulator::Run();
 
     json_util::OutputStats(configObj, apps, topology, config_file);
+
+    // std::cout << "Total PFC pause sent: " << g_totalPfcPause << std::endl;
 
     tEnd = std::chrono::system_clock::now();
     std::chrono::duration<double> elapsed_seconds = tEnd - tBegin;
@@ -305,6 +323,7 @@ void
 PfcSent(std::pair<uint32_t, uint32_t> nodeAndPortId, uint8_t prio, bool isPause)
 {
     std::string pfcType = isPause ? "PAUSE" : "RESUME";
+    g_totalPfcPause += isPause;
     NS_LOG_DEBUG("PFC " << pfcType << " sent at node " << nodeAndPortId.first << " port "
                         << nodeAndPortId.second << "'s " << (uint8_t)prio << " priority "
                         << " at " << Simulator::Now().GetNanoSeconds() << "ns");

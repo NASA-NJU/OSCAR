@@ -1,0 +1,150 @@
+{
+    "inputFile": {
+        "topo": "config/topo/spine-leaf-4-16-2.txt"
+    },
+    "outputFile": {
+        "resultFile": "output/*.json"
+    },
+    "runtimeConfig": {
+        "seed": 1,
+        "runningTime": "1s",
+        "stopTime": "10s"
+    },
+    "defaultConfig": {
+        "TcpL4Protocol": {
+            "SocketType": "ns3::TcpNewReno"
+        },
+        "TcpSocket": {
+            "DelAckCount": 1,
+            "InitialCwnd": 1,
+            "SndBufSize": 1073741823,
+            "RcvBufSize": 1073741823,
+            "SegmentSize": 1500
+        },
+        "TcpSocketBase": {
+            "Timestamp": false
+        },
+        "RoCEv2Socket": {
+            "RetxMode": "GBN"
+        },
+        "RoCEv2SocketState": {
+            "MinRateRatio": 0.001
+        }
+    },
+    "globalConfig": {
+        "detailedSenderStats": false,
+        "detailedRetxStats": false,
+        "detailedQlengthStats": false,
+        "qlengthRecordInterval": "10us",
+        "detailedThroughputStats": false,
+        "deviceThroughputRecordInterval": "10us"
+    },
+    "topologyConfig": {
+        "flowControlConfig": [
+            {
+                "nodes": "host",
+                "trafficControlLayer": "ns3::TrafficControlLayer",
+                "trafficControlLayerConfig": {},
+                "flowControlPort": "ns3::DcbPfcPort",
+                "flowControlPortConfig": {
+                    "EnableIngressControl": true,
+                    "EnableEgressControl": true,
+                    "EnableVec": 255
+                },
+                "outerQueueDisc": "ns3::PausableQueueDisc",
+                "outerQueueDiscConfig": {
+                    "FcEnabled": true
+                },
+                "innerQueueDisc": "ns3::FifoQueueDiscEcn",
+                "innerQueueDiscConfig": {
+                    "MaxSize": "10MiB"
+                }
+            },
+            {
+                "nodes": "switch",
+                "bufferSize": "32MiB",
+                "numQueuePerPort": 8,
+                "numLosslessQueue": 2,
+                "trafficControlLayer": "ns3::DcbTrafficControl",
+                "trafficControlLayerConfig": {},
+                "flowControlPort": "ns3::DcbHpccPort",
+                "flowControlPortConfig": {
+                    "EnableIngressControl": true,
+                    "EnableEgressControl": true,
+                    "EnableVec": 255
+                },
+                "flowControlMmuQueue": "ns3::DcbPfcMmuQueue",
+                "flowControlMmuQueueConfig": {
+                    "ReserveSize": "4KiB",
+                    "ResumeOffset": "3KiB",
+                    "IsDynamicThreshold": true,
+                    "DtShift": 2
+                },
+                "outerQueueDisc": "ns3::PausableQueueDisc",
+                "outerQueueDiscConfig": {
+                    "FcEnabled": true
+                },
+                "innerQueueDisc": "ns3::FifoQueueDiscEcn",
+                "innerQueueDiscConfig": {
+                    "EcnKMin": "400KiB",
+                    "EcnKMax": "1600KiB",
+                    "EcnPMax": 0.2
+                }
+            }
+        ],
+        "linkConfig": [
+            {
+                "links": "host",
+                "rate": "200Gbps",
+                "delay": "1us"
+            },
+            {
+                "links": "switch",
+                "rate": "200Gbps",
+                "delay": "1us"
+            }
+        ]
+    },
+    "applicationConfig": [
+        {
+            "NOTE": "Background traffic",
+            "appType": "ns3::DcbTrafficGenApplication",
+            "nodes": "[0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63]",
+            "protocolGroup": "RoCEv2",
+            "applicationConfig": {
+                "CongestionType": "ns3::RoCEv2Hpcc",
+                "SendEnabled": true,
+                "TrafficPattern": "Parallelism",
+                "ParallelismType": "ResNet"
+            },
+            "socketConfig": {
+                "InnerPriority": 0
+            },
+            "congestionConfig": {
+                "RateAIRatio": 0.0005,
+                "TargetUtil": 1.5
+            },
+            "startTime": "0.1s",
+            "stopTime": "0.11s",
+            "groupCongestionConfig": {
+                "Application::FlowType": {
+                    "begin": "3 group",
+                    "end": "0 group"
+                },
+                "Application::TrafficPattern": [
+                    "Parallelism ResNet1",
+                    "Parallelism ResNet2",
+                    "Parallelism ResNet3",
+                    "Parallelism ResNet4"
+                ],
+                "Application::ParallelismType": [
+                    "VGG",
+                    "VGG",
+                    "VGG",
+                    "VGG"
+                ],
+                "groupSize": 16
+            }
+        }
+    ]
+}

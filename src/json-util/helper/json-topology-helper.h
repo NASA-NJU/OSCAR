@@ -28,6 +28,7 @@
 #include "ns3/dcb-fc-helper.h"
 #include "ns3/dcb-net-device.h"
 #include "ns3/dcb-pfc-port.h"
+#include "ns3/dcb-ppfc-port.h"
 #include "ns3/dcb-stack-helper.h"
 #include "ns3/dcb-traffic-gen-application-helper.h"
 #include "ns3/global-router-interface.h"

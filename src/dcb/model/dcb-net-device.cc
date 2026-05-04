@@ -28,6 +28,7 @@
 #include "ns3/queue.h"
 #include "ns3/simulator.h"
 #include "ns3/type-id.h"
+#include "ns3/ppfc-pausable-queue-disc.h"
 
 #include <stdio.h>
 

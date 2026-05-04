@@ -51,7 +51,22 @@ RoCEv2Powertcp::GetTypeId()
                                           "Powertcp's RateAI ratio. Act as beta in paper.",
                                           DoubleValue(0.0005),
                                           MakeDoubleAccessor(&RoCEv2Powertcp::m_raiRatio),
-                                          MakeDoubleChecker<double>());
+                                          MakeDoubleChecker<double>())
+                            .AddAttribute("ArrivalRateBound",
+                                          "Powertcp's arrival rate bound.",
+                                          BooleanValue(true),
+                                          MakeBooleanAccessor(&RoCEv2Powertcp::m_arrivalRateBound),
+                                          MakeBooleanChecker())
+                            .AddAttribute("DeltaTBound",
+                                          "Powertcp's deltaT bound.",
+                                          BooleanValue(true),
+                                          MakeBooleanAccessor(&RoCEv2Powertcp::m_deltaTBound),
+                                          MakeBooleanChecker())
+                            .AddAttribute("GammaOld",
+                                          "Powertcp's old gamma.",
+                                          BooleanValue(true),
+                                          MakeBooleanAccessor(&RoCEv2Powertcp::m_gammaOld),
+                                          MakeBooleanChecker());
     return tid;
 }
 
@@ -102,8 +117,7 @@ RoCEv2Powertcp::UpdateStateSend(Ptr<Packet> packet)
     packet->AddHeader(roceHeader);
 
     // Record the packet send time, used to calc the RTT
-    // TODO stats
-    // m_stats->RecordPacketSend(roceHeader.GetPSN(), Simulator::Now());
+    m_stats->RecordPacketSend(roceHeader.GetPSN(), Simulator::Now());
 }
 
 void
@@ -143,8 +157,7 @@ RoCEv2Powertcp::UpdateStateWithRcvACK(Ptr<Packet> ack,
         senderNextPSN); // if is first ACK, this function would update m_lastUpdateSeq and m_oldCwnd
 
     // Record the packet delay
-    // TODO stats
-    // m_stats->RecordPacketDelay(ackSeq);
+    m_stats->RecordPacketDelay(ackSeq);
 }
 
 void
@@ -162,23 +175,26 @@ RoCEv2Powertcp::NormPower(Ptr<Packet> ack, const uint32_t ackSeq)
     {
         /* Calculate power */
         Time dt = NanoSeconds(inthop[i].GetTimeDelta(m_hops[i])); // Algorithm Line 11
-        double delayGradient = (inthop[i].GetQlen() - m_hops[i].GetQlen()) * 8.0 /
+        double delayGradient = ((int64_t)inthop[i].GetQlen() - (int64_t)m_hops[i].GetQlen()) * 8.0 /
                                dt.GetSeconds(); // bps, Algorithm Line 12
         double txRate =
             inthop[i].GetBytesDelta(m_hops[i]) * 8.0 / dt.GetSeconds(); // bps, Algorithm Line 13
+        double arrivalRate = txRate + delayGradient;                    // bps
 
         double bdp = inthop[i].GetLineRate().GetBitRate() * baseRtt.GetSeconds() /
                      8.0; // byte, Algorithm Line 15
 
-        double power =
-            (delayGradient + txRate) *
-            (inthop[i].GetQlen() + bdp); // Current(bps) * Voltage(byte), Algorithm Line 17
+        if (m_arrivalRateBound)
+        {
+            // Not in the paper, but according to git@github.com:inet-tub/ns3-datacenter.git
+            arrivalRate = std::max(arrivalRate, inthop[i].GetLineRate().GetBitRate() * 0.5);
+        }
+
+        double power = (arrivalRate) * (inthop[i].GetQlen() +
+                                        bdp); // Current(bps) * Voltage(byte), Algorithm Line 17
         /* Normalize power */
         double e = inthop[i].GetLineRate().GetBitRate() * bdp; // bps * byte, Algorithm Line 18
         double powerNormPrime = power / e;                     // Algorithm Line 19
-
-        // powerNormPrime should not be greater than 1
-        powerNormPrime = std::min(powerNormPrime, 1.0);
 
         if (powerNormPrime > powerNorm) // Algorithm Line 20-22
         {
@@ -186,12 +202,17 @@ RoCEv2Powertcp::NormPower(Ptr<Packet> ack, const uint32_t ackSeq)
             deltaTNorm = dt.GetSeconds() / baseRtt.GetSeconds();
         }
     }
+
     // deltaTNorm should not be greater than 1.
     // Not in the paper, but according to git@github.com:inet-tub/ns3-datacenter.git
-    deltaTNorm = std::min(deltaTNorm, 1.0);
+    if (m_deltaTBound)
+    {
+        deltaTNorm = std::min(deltaTNorm, 1.0);
+    }
     m_power = m_power * (1.0 - deltaTNorm) + powerNorm * deltaTNorm; // Algorithm Line 24
-    // TODO stats
-    //  m_stats->RecordU(m_u);
+
+    // Record power for statistics
+    m_stats->RecordPower(m_power);
 }
 
 void
@@ -205,8 +226,16 @@ RoCEv2Powertcp::UpdateWindow()
     double newPower =
         m_isTheta ? m_power : m_power / 0.95; // Not in the paper, but according to
                                               // git@github.com:inet-tub/ns3-datacenter.git
-    double newCwnd = (static_cast<double>(m_oldCwnd) / newPower + m_beta) * m_gamma +
-                     (m_sockState->GetCwnd()) * (1.0 - m_gamma); // Bytes
+
+    // Use m_oldCwnd as the last term in gamma update
+    // Not in the paper, but according to git@github.com:inet-tub/ns3-datacenter.git
+    double newCwnd = 0;
+    if (m_gammaOld)
+        newCwnd = (static_cast<double>(m_oldCwnd) / newPower + m_beta) * m_gamma +
+                  (m_oldCwnd) * (1.0 - m_gamma); // Bytes
+    else
+        newCwnd = (static_cast<double>(m_sockState->GetCwnd()) / newPower + m_beta) * m_gamma +
+                  (m_sockState->GetCwnd()) * (1.0 - m_gamma); // Bytes
     double cwndPackets =
         ((static_cast<double>(m_sockState->GetCwnd()) + m_sockState->GetPacketSize() - 1.0) /
          m_sockState->GetPacketSize());
@@ -250,6 +279,12 @@ RoCEv2Powertcp::GetName() const
     return "PowerTCP";
 }
 
+std::shared_ptr<RoCEv2CongestionOps::Stats>
+RoCEv2Powertcp::GetStats() const
+{
+    return m_stats;
+}
+
 void
 RoCEv2Powertcp::Init()
 {
@@ -262,9 +297,56 @@ RoCEv2Powertcp::Init()
 
     m_isTheta = false;
 
-    m_stats = std::make_shared<Stats>();
-
     RegisterCongestionType(GetTypeId());
+}
+
+RoCEv2Powertcp::Stats::Stats()
+{
+    NS_LOG_FUNCTION(this);
+    BooleanValue bv;
+    if (GlobalValue::GetValueByNameFailSafe("detailedSenderStats", bv))
+        bDetailedSenderStats = bv.Get();
+    else
+        bDetailedSenderStats = false;
+}
+
+void
+RoCEv2Powertcp::Stats::RecordPacketSend(uint32_t seq, Time sendTs)
+{
+    if (bDetailedSenderStats)
+    {
+        m_inflightPkts.push_back(std::make_pair(seq, sendTs));
+    }
+}
+
+void
+RoCEv2Powertcp::Stats::RecordPacketDelay(uint32_t seq)
+{
+    if (bDetailedSenderStats)
+    {
+        Time recvTs = Simulator::Now();
+        // Find the send time for this sequence number
+        for (auto it = m_inflightPkts.begin(); it != m_inflightPkts.end(); ++it)
+        {
+            if (it->first == seq)
+            {
+                Time sendTs = it->second;
+                Time delay = recvTs - sendTs;
+                vPacketDelay.emplace_back(sendTs, recvTs, delay);
+                m_inflightPkts.erase(it);
+                break;
+            }
+        }
+    }
+}
+
+void
+RoCEv2Powertcp::Stats::RecordPower(double powerNormPrime)
+{
+    if (bDetailedSenderStats)
+    {
+        vPower.emplace_back(Simulator::Now(), powerNormPrime);
+    }
 }
 
 /********************

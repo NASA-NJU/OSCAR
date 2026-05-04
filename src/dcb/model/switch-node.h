@@ -5,6 +5,7 @@
 #include "ns3/net-device.h"
 #include "ns3/node.h"
 #include "ns3/packet.h"
+#include "ns3/random-variable-stream.h"
 #include "ns3/tcp-header.h"
 #include "ns3/udp-header.h"
 
@@ -41,6 +42,7 @@ class SwitchNode : public Node
 
   private:
     std::map<uint32_t, std::vector<int>> m_routeTable;
+    Ptr<UniformRandomVariable> m_rand;
 
     constexpr static const uint32_t HASH_BUF_SIZE = 12;
 

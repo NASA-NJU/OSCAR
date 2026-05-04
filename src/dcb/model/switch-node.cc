@@ -28,7 +28,7 @@ SwitchNode::DoInitialize()
     //     Ptr<NetDevice> dev = GetDevice(i);
     //     dev->SetReceiveCallback(MakeCallback(&SwitchNode::ReceiveFromDevice, this));
     // }
-
+    m_rand = CreateObject<UniformRandomVariable>();
     // setup route table
     std::unordered_map<uint32_t, std::set<int>> routeTable;
     auto globalRouting = GetObject<GlobalRouter>()->GetRoutingProtocol();
@@ -69,6 +69,10 @@ SwitchNode::DoInitialize()
 uint32_t
 SwitchNode::GetEgressDevIndex(Ptr<Packet> packet)
 {
+    auto globalRouting = GetObject<GlobalRouter>()->GetRoutingProtocol();
+    EnumValue ecmpModeEnum;
+    globalRouting->GetAttribute("RandomEcmpRouting", ecmpModeEnum);
+    auto ecmpMode = static_cast<Ipv4GlobalRouting::EcmpMode>(ecmpModeEnum.Get());
     Ipv4Header ipv4H;
     Ptr<Packet> p = packet->Copy();
     p->RemoveHeader(ipv4H);
@@ -81,42 +85,54 @@ SwitchNode::GetEgressDevIndex(Ptr<Packet> packet)
 
     HashBuf buf;
     uint32_t idx = 0;
-    if (ipv4H.GetProtocol() == TcpL4Protocol::PROT_NUMBER)
-    {
-        TcpHeader tcpH;
-        p->PeekHeader(tcpH);
-        buf._srcIp = ipv4H.GetSource().Get();
-        buf._dstIp = ipv4H.GetDestination().Get();
-        buf._srcPort = tcpH.GetSourcePort();
-        buf._dstPort = tcpH.GetDestinationPort();
+    switch(ecmpMode){
+        case Ipv4GlobalRouting::EcmpMode::NONE:
+            idx = 0;
+            break;
+        case Ipv4GlobalRouting::EcmpMode::PER_PACKET_ECMP:
+            idx = m_rand->GetInteger(0, egressNetDevs.size() - 1);
+            break;
+        case Ipv4GlobalRouting::EcmpMode::PER_FLOW_ECMP:{
+            if (ipv4H.GetProtocol() == TcpL4Protocol::PROT_NUMBER)
+            {
+                TcpHeader tcpH;
+                p->PeekHeader(tcpH);
+                buf._srcIp = ipv4H.GetSource().Get();
+                buf._dstIp = ipv4H.GetDestination().Get();
+                buf._srcPort = tcpH.GetSourcePort();
+                buf._dstPort = tcpH.GetDestinationPort();
 
-        buf._srcPort += Simulator::GetContext();
-        idx = Hash32(buf._b, HASH_BUF_SIZE) % egressNetDevs.size();
-    }
-    else if (ipv4H.GetProtocol() == UdpL4Protocol::PROT_NUMBER)
-    {
-        UdpHeader udpH;
-        p->PeekHeader(udpH);
-        if (udpH.GetSourcePort() == 4791) // RoCEv2L4Protocol::PROT_NUMBER
-        {                                 // RoCEv2
-            UdpRoCEv2Header udpRoCEheader;
-            p->PeekHeader(udpRoCEheader);
-            buf._srcIp = ipv4H.GetSource().Get();
-            buf._dstIp = ipv4H.GetDestination().Get();
-            buf._srcPort = udpRoCEheader.GetRoCE().GetSrcQP();
-            buf._dstPort = udpRoCEheader.GetRoCE().GetDestQP();
-        }
-        else
-        {
-            buf._srcIp = ipv4H.GetSource().Get();
-            buf._dstIp = ipv4H.GetDestination().Get();
-            buf._srcPort = udpH.GetSourcePort();
-            buf._dstPort = udpH.GetDestinationPort();
-        }
+                buf._srcPort += Simulator::GetContext();
+                idx = Hash32(buf._b, HASH_BUF_SIZE) % egressNetDevs.size();
+            }
+            else if (ipv4H.GetProtocol() == UdpL4Protocol::PROT_NUMBER)
+            {
+                UdpHeader udpH;
+                p->PeekHeader(udpH);
+                if (udpH.GetSourcePort() == 4791) // RoCEv2L4Protocol::PROT_NUMBER
+                {                                 // RoCEv2
+                    UdpRoCEv2Header udpRoCEheader;
+                    p->PeekHeader(udpRoCEheader);
+                    buf._srcIp = ipv4H.GetSource().Get();
+                    buf._dstIp = ipv4H.GetDestination().Get();
+                    buf._srcPort = udpRoCEheader.GetRoCE().GetSrcQP();
+                    buf._dstPort = udpRoCEheader.GetRoCE().GetDestQP();
+                }
+                else
+                {
+                    buf._srcIp = ipv4H.GetSource().Get();
+                    buf._dstIp = ipv4H.GetDestination().Get();
+                    buf._srcPort = udpH.GetSourcePort();
+                    buf._dstPort = udpH.GetDestinationPort();
+                }
 
-        buf._srcPort += Simulator::GetContext();
-        idx = Hash32(buf._b, HASH_BUF_SIZE) % egressNetDevs.size();
+                buf._srcPort += Simulator::GetContext();
+                idx = Hash32(buf._b, HASH_BUF_SIZE) % egressNetDevs.size();
+            }
+            break;
+        }
     }
+    
 
     return egressNetDevs[idx];
 }

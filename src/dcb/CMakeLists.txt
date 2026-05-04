@@ -15,6 +15,7 @@ build_lib(
 	  model/dcb-traffic-control.cc
 	  model/dcb-base-application.cc
 	  model/dcb-traffic-gen-application.cc
+	  model/channel-ring-application.cc
 	  model/real-time-application.cc
 	  model/dcb-flow-control-port.cc
 	  model/dcb-flow-control-mmu-queue.cc
@@ -27,21 +28,29 @@ build_lib(
 	  model/rocev2-socket.cc
 	  model/rocev2-congestion-ops.cc
 	  model/rocev2-dcqcn.cc
+	  model/rocev2-dcqcn-int.cc
 	  model/rocev2-dctcp.cc
 	  model/rocev2-hpcc.cc
 	  model/rocev2-timely.cc
-	  model/rocev2-prioplus-swift.cc
 	  model/rocev2-prioplus-ledbat.cc
+	  model/rocev2-prioplus-swift.cc
+	  model/rocev2-oscar.cc
 	  model/rocev2-swift.cc
 	  model/rocev2-ledbat.cc
 	  model/rocev2-powertcp.cc
 	  model/rocev2-poseidon.cc
 	  model/rocev2-d2tcp.cc
 	  model/rocev2-nocc.cc
+	  model/dcb-ppfc-port.cc
+	  model/ppfc-queue-disc-item.cc
+	  model/dcb-ppfc-traffic-control.cc
+	  model/ppfc-pausable-queue-disc.cc
+	  model/dcb-ppfc-mmu-queue.cc
 	  model/switch-node.cc
 	  utils/hpcc-header.cc
 	  utils/poseidon-header.cc
 	  utils/pfc-frame.cc
+	  utils/ppfc-frame.cc
 	  utils/real-time-stats-tag.cc
 	  utils/flow-identifier.cc
   HEADER_FILES
@@ -58,6 +67,7 @@ build_lib(
 	  model/fifo-queue-disc-ecn.h
 	  model/dcb-base-application.h
 	  model/dcb-traffic-gen-application.h
+	  model/channel-ring-application.h
 	  model/real-time-application.h
 	  model/dcb-flow-control-port.h
 	  model/dcb-flow-control-mmu-queue.h
@@ -70,21 +80,29 @@ build_lib(
 	  model/rocev2-socket.h
 	  model/rocev2-congestion-ops.h
 	  model/rocev2-dcqcn.h
+	  model/rocev2-dcqcn-int.h
 	  model/rocev2-dctcp.h
 	  model/rocev2-hpcc.h
 	  model/rocev2-timely.h
-	  model/rocev2-prioplus-swift.h
 	  model/rocev2-prioplus-ledbat.h
+	  model/rocev2-prioplus-swift.h
+	  model/rocev2-oscar.h
 	  model/rocev2-swift.h
 	  model/rocev2-ledbat.h
 	  model/rocev2-powertcp.h
 	  model/rocev2-poseidon.h
 	  model/rocev2-d2tcp.h
 	  model/rocev2-nocc.h
+	  model/dcb-ppfc-port.h
+	  model/ppfc-queue-disc-item.h
+	  model/dcb-ppfc-traffic-control.h
+	  model/ppfc-pausable-queue-disc.h
+	  model/dcb-ppfc-mmu-queue.h
 	  model/switch-node.h
 	  utils/hpcc-header.h
 	  utils/poseidon-header.h
 	  utils/pfc-frame.h
+	  utils/ppfc-frame.h
 	  utils/real-time-stats-tag.h
 	  utils/flow-identifier.h
   LIBRARIES_TO_LINK

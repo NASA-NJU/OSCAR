@@ -77,6 +77,33 @@ class RoCEv2Powertcp : public RoCEv2CongestionOps
 
     std::string GetName() const override;
 
+    class Stats : public RoCEv2CongestionOps::Stats
+    {
+      public:
+        // constructor
+        Stats();
+
+        // Detailed statistics, only enabled if needed
+        bool bDetailedSenderStats;
+        std::deque<std::pair<uint32_t, Time>> m_inflightPkts; //!< sendTs to record RTT.
+        std::vector<std::tuple<Time, Time, Time>>
+            vPacketDelay; //!< The Delay masurement per packet, recorded as send time, recv time and
+                          //!< delay
+        std::vector<std::pair<Time, double>> vPower; //!< The power measurement per packet
+
+        // Recorder function of the detailed statistics
+        void RecordPacketSend(uint32_t seq, Time sendTs);
+        void RecordPacketDelay(uint32_t seq); // Called when receiving an ACK
+        void RecordPower(double power);
+
+        // Collect the statistics and check if the statistics is correct
+        void CollectAndCheck();
+
+        // No getter for simplicity
+    };
+
+    std::shared_ptr<RoCEv2CongestionOps::Stats> GetStats() const override;
+
   protected:
     /**
      * \brief Calculate the normalized power.
@@ -105,6 +132,10 @@ class RoCEv2Powertcp : public RoCEv2CongestionOps
 
     bool m_isTheta;   //!< True if is theta-powerTcp.
     bool m_canUpdate; //!< Whether the cwnd can be updated.
+
+    bool m_arrivalRateBound; //!< Whether the arrival rate is bounded.
+    bool m_deltaTBound;      //!< Whether the deltaTNorm is bounded.
+    bool m_gammaOld;         //!< Whether use old cwnd in gamma update.
 
   private:
     /**

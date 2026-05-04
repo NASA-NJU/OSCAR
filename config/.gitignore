@@ -5,4 +5,16 @@
 !topo/*
 !trace/*
 !demos/*
+!harvest-paper/*
+!harvest-paper-new/*
+!harvest-paper-nsdi25/*
+!harvest-paper-nsdi25/**/run.sh
+!porcc-sigcomm25/*
+!porcc-sigcomm25/**/run.sh
+!conext-paper/*
+!delay-error/*
+prioplus-eurosys25
+delay-error/cdf_visualization.ipynb
+*.pdf
 !prioplus-eurosys25/*
+!oscar-nsdi26/*

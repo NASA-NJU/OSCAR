@@ -161,6 +161,87 @@ DcbFcHelper::InstallHpccPFCtoNodePort(Ptr<Node> node,
                                   dev);
 }
 
+void
+DcbFcHelper::InstallPPfctoSwitch(Ptr<Node> node,
+                                 const uint32_t port,
+                                 const DcbPPfcPortConfig& config,
+                                 const uint32_t qNum)
+{
+    Ptr<DcbPPfcTrafficControl> dcbTc = node->GetObject<DcbPPfcTrafficControl>();
+    NS_ASSERT_MSG(dcbTc, "PPFC enabled but there is no DcbTrafficControl aggregated to the node");
+
+    Ptr<NetDevice> dev = node->GetDevice(port);
+
+    // enable flow control on queue disc
+    Ptr<PausableQueueDisc> qDisc = DynamicCast<DcbNetDevice>(node->GetDevice(port))->GetQueueDisc();
+    qDisc->SetFCEnabled(true);
+    DynamicCast<PPfcPausableQueueDisc>(qDisc)->SetPortQNum(qNum);
+
+    // install ppfc-port
+    Ptr<DcbPPfcPort> ppfcPort = CreateObject<DcbPPfcPort>(dev, dcbTc);
+    std::vector<Ptr<DcbFlowControlMmuQueue>> mmuQueues;
+    ObjectFactory factory;
+    factory.SetTypeId("ns3::FifoQueueDiscEcn");
+    for (uint32_t i = 0; i < qNum; i++)
+    {
+        Ptr<DcbPPfcMmuQueue> mmuQueue = CreateObject<DcbPPfcMmuQueue>(config.qReservedSize);
+        mmuQueues.push_back(mmuQueue);
+
+        // Ptr<QueueDisc> qd = factory.Create<QueueDisc>();
+        // qd->Initialize();
+        // Ptr<PPfcPausableQueueDiscClass> c = CreateObject<PPfcPausableQueueDiscClass>();
+        // c->SetQueueDisc(qd);
+        // qDisc->AddQueueDiscClass(c);
+    }
+    // config threshold in ppfc-port.
+    for (auto& th : config.categories)
+    {
+        ppfcPort->AddCategory(th.xoff, th.xon);
+    }
+    dcbTc->InstallFCToPort(port, ppfcPort, mmuQueues);
+    // register protocol handler
+    node->RegisterProtocolHandler(MakeCallback(&DcbPPfcPort::ReceivePfc, ppfcPort),
+                                  PPfcFrame::PROT_NUMBER,
+                                  dev);
+}
+
+void
+DcbFcHelper::InstallPPfctoHost(Ptr<Node> node, const uint32_t port, const uint32_t qNum)
+{
+    Ptr<DcbPPfcTrafficControl> dcbTc = node->GetObject<DcbPPfcTrafficControl>();
+    NS_ASSERT_MSG(dcbTc, "PPFC enabled but there is no DcbTrafficControl aggregated to the node");
+
+    Ptr<NetDevice> dev = node->GetDevice(port);
+
+    // enable flow control on queue disc
+    Ptr<PausableQueueDisc> qDisc = DynamicCast<DcbNetDevice>(node->GetDevice(port))->GetQueueDisc();
+    qDisc->SetFCEnabled(true);
+    DynamicCast<PPfcPausableQueueDisc>(qDisc)->SetPortQNum(qNum);
+
+    // install ppfc-port
+    Ptr<DcbPPfcPort> ppfcPort = CreateObject<DcbPPfcPort>(dev, dcbTc);
+    std::vector<Ptr<DcbFlowControlMmuQueue>> mmuQueues;
+    ObjectFactory factory;
+    factory.SetTypeId("ns3::FifoQueueDiscEcn");
+    for (uint32_t i = 0; i < qNum; i++)
+    {
+        Ptr<DcbPPfcMmuQueue> mmuQueue =
+            CreateObject<DcbPPfcMmuQueue>(QueueSize(QueueSizeUnit::BYTES, 1e4).GetValue());
+        mmuQueues.push_back(mmuQueue);
+
+        // Ptr<QueueDisc> qd = factory.Create<QueueDisc>();
+        // qd->Initialize();
+        // Ptr<PPfcPausableQueueDiscClass> c = CreateObject<PPfcPausableQueueDiscClass>();
+        // c->SetQueueDisc(qd);
+        // qDisc->AddQueueDiscClass(c);
+    }
+    dcbTc->InstallFCToPort(port, ppfcPort, mmuQueues);
+    // register protocol handler
+    node->RegisterProtocolHandler(MakeCallback(&DcbPPfcPort::ReceivePfc, ppfcPort),
+                                  PPfcFrame::PROT_NUMBER,
+                                  dev);
+}
+
 static void
 AssignAddress(const Ptr<Node> node, const Ptr<NetDevice> device)
 {

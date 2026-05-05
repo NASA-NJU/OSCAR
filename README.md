@@ -33,7 +33,7 @@ When debuging your code, you can configure with `-d debug`. The `-d optimized` c
 
 The configs are put in `config/oscar-nsdi26/experiments` which can be run by running `config/oscar-nsdi26/experiments/run_all.sh` in one click.
 
-Note that finishing all the experiments need 4 hours on our server with Intel 48-core CPU @ 2.2GHz and 256 GB memory. It may take much more time on a desktop PC.
+Note that finishing all the experiments needs around 4 hours on our server with Intel 48-core CPU @ 2.2GHz and 256 GB memory. It may take much more time on a desktop PC.
 
 ### Plot figures
 
@@ -72,7 +72,26 @@ This software is licensed under the terms of the GNU General Public License v2.0
 
 ## Citation
 
-If you use this codebase in your work or find our work valuable, please cite this codebase or the paper that open-source this codebase. The BibTeX for PrioPlus is:
+If you use this codebase in your work or find our work valuable, please cite this codebase or the paper that open-source this codebase. 
+
+The BibTeX for OSCAR is:
+
+```
+@inproceedings {316752,
+author = {Zhaochen Zhang and Feiyang Xue and Rui Ning and Keqiang He and Gianni Antichi and Jiaqi Gao and Zhimeng Yin and Kexin Liu and Rui Li and Zhengqi Cui and Zhehao Lin and Peirui Cao and Guihai Chen and Chen Tian},
+title = {{OSCAR}: {O(1)-Step} Convergence and Readily-deployable Congestion Control},
+booktitle = {23rd USENIX Symposium on Networked Systems Design and Implementation (NSDI 26)},
+year = {2026},
+isbn = {978-1-939133-54-0},
+address = {Renton, WA},
+pages = {543--570},
+url = {https://www.usenix.org/conference/nsdi26/presentation/zhang-zhaochen},
+publisher = {USENIX Association},
+month = may
+}
+```
+
+The BibTeX for PrioPlus is:
 
 ```
 @inproceedings{10.1145/3689031.3717463,

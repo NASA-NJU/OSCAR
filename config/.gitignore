@@ -18,3 +18,4 @@ delay-error/cdf_visualization.ipynb
 *.pdf
 !prioplus-eurosys25/*
 !oscar-nsdi26/*
+!oscar-nsdi26/**
